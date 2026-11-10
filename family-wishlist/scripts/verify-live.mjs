@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+const origin='https://miciano.net';
+const page=await fetch(origin);assert.equal(page.status,200);
+const html=await page.text();assert.match(html,/<title>Log in<\/title>/);
+const me=await fetch(origin+'/api/me');assert.equal(me.status,200);assert.deepEqual(await me.json(),{member:null});
+const wishes=await fetch(origin+'/api/wishes');assert.equal(wishes.status,401);
+const login=await fetch(origin+'/api/login',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({username:'launch_check_'+Date.now().toString(36),password:'invalid'})});
+assert.equal(login.status,401,await login.text());
+assert.equal(login.headers.get('set-cookie'),null);
+for(const font of ['inter-latin.woff2','space-grotesk-latin.woff2'])assert.equal((await fetch(origin+'/fonts/'+font)).status,200);
+console.log('Live HTTPS, login page, database-backed login rejection, private wishlist API, and both fonts verified.');
