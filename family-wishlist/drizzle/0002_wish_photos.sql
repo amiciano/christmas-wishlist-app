@@ -1,0 +1,1 @@
+ALTER TABLE wishes ADD COLUMN photo text NOT NULL DEFAULT '';

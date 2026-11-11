@@ -27,18 +27,19 @@ async function handle(req:Request){
   if(req.method==='GET'){
    if(route==='me')return json({member:member?publicMember(member):null});
    if(!member)fail('Please log in.',401);
-   if(route==='members')return json((await db.prepare('SELECT id,name,username FROM members ORDER BY name COLLATE NOCASE').all()).results);
+   if(route==='members')return json((await db.prepare(`SELECT id,name,username FROM members ORDER BY CASE name COLLATE NOCASE WHEN 'Miguel' THEN 1 WHEN 'Andrea' THEN 2 WHEN 'Maria' THEN 3 WHEN 'Isabella' THEN 4 WHEN 'Ana' THEN 5 WHEN 'Victoria' THEN 6 WHEN 'Adrian' THEN 7 WHEN 'Gemma' THEN 8 WHEN 'Sophia' THEN 9 ELSE 10 END`).all()).results);
    if(route==='wishes'){
     const owner=url.searchParams.get('member')||member.id;
     // Purchase data is never selected for the recipient, including administrators.
-    if(owner===member.id)return json((await db.prepare('SELECT id,title,url,notes,price,created FROM wishes WHERE member_id=? ORDER BY sort_order,created DESC,id').bind(owner).all()).results);
-    return json((await db.prepare('SELECT w.id,w.title,w.url,w.notes,w.price,w.created, p.wish_id IS NOT NULL AS bought, p.buyer_id=? AS canUndo FROM wishes w LEFT JOIN purchases p ON p.wish_id=w.id WHERE w.member_id=? ORDER BY w.sort_order,w.created DESC,w.id').bind(member.id,owner).all()).results);
+    if(owner===member.id)return json((await db.prepare('SELECT id,title,url,notes,price,photo,created FROM wishes WHERE member_id=? ORDER BY sort_order,created DESC,id').bind(owner).all()).results);
+    return json((await db.prepare('SELECT w.id,w.title,w.url,w.notes,w.price,w.photo,w.created, p.wish_id IS NOT NULL AS bought, p.buyer_id=? AS canUndo FROM wishes w LEFT JOIN purchases p ON p.wish_id=w.id WHERE w.member_id=? ORDER BY w.sort_order,w.created DESC,w.id').bind(member.id,owner).all()).results);
    }
    fail('Not found.',404);
   }
   if(req.method!=='POST')fail('Not allowed.',405);
-  if(Number(req.headers.get('content-length')||0)>16000)fail('Request too large.',413);
-  const text=await req.text();if(text.length>16000)fail('Request too large.',413);
+  const requestLimit=route==='wishes/save'?200000:16000;
+  if(Number(req.headers.get('content-length')||0)>requestLimit)fail('Request too large.',413);
+  const text=await req.text();if(text.length>requestLimit)fail('Request too large.',413);
   let data:Record<string,unknown>;try{data=JSON.parse(text)}catch{fail('Invalid request.');}
   if(!data||typeof data!=='object'||Array.isArray(data))fail('Invalid request.');
   if(route==='login'||route==='setup'){
@@ -98,8 +99,10 @@ async function handle(req:Request){
   if(route==='wishes/save'){
    const title=field(data,'title',120,true),notes=field(data,'notes',1200),price=field(data,'price',40),link=field(data,'url',2000);
    if(link){try{const u=new URL(link);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)fail('Use a valid http or https link.');}catch{fail('Use a valid http or https link.');}}
-   if(data.id){const result=await db.prepare('UPDATE wishes SET title=?,url=?,notes=?,price=? WHERE id=? AND member_id=?').bind(title,link,notes,price,field(data,'id',64,true),member.id).run();if(!result.meta.changes)fail('Item not found.',404);}
-   else await db.prepare('INSERT INTO wishes(id,member_id,title,url,notes,price,created,sort_order) VALUES(?,?,?,?,?,?,?,(SELECT COALESCE(MIN(sort_order),0)-1 FROM wishes WHERE member_id=?))').bind(crypto.randomUUID(),member.id,title,link,notes,price,Date.now(),member.id).run();
+   const photo=Object.hasOwn(data,'photo')?field(data,'photo',180000):null;
+   if(photo&&!/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(photo))fail('Choose a valid photo.');
+   if(data.id){const result=await db.prepare('UPDATE wishes SET title=?,url=?,notes=?,price=?,photo=COALESCE(?,photo) WHERE id=? AND member_id=?').bind(title,link,notes,price,photo,field(data,'id',64,true),member.id).run();if(!result.meta.changes)fail('Item not found.',404);}
+   else await db.prepare('INSERT INTO wishes(id,member_id,title,url,notes,price,photo,created,sort_order) VALUES(?,?,?,?,?,?,?,?,(SELECT COALESCE(MIN(sort_order),0)-1 FROM wishes WHERE member_id=?))').bind(crypto.randomUUID(),member.id,title,link,notes,price,photo||'',Date.now(),member.id).run();
    return json({ok:true});
   }
   const id=field(data,'id',64,true);
